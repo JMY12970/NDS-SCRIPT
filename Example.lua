@@ -1,17 +1,22 @@
 --[[
     OzionUI -- full feature showcase.
 
-    Paste this straight into your executor to see every element in action,
-    or copy the bits you need into your own script.
+    HOW TO RUN THIS
+    ---------------
+    1. Open OzionUI.lua and copy the whole file.
+    2. Paste it into your executor.
+    3. Paste everything below into the same script, underneath it.
+    4. Execute.
+
+    Every element the library has is used somewhere in here, so it doubles as
+    a copy-paste reference.
 ]]
 
--- While this branch has not been merged into main yet, use:
---   ".../JMY12970/Unknown/arena/01a1049a-unknown/"
-local Repo = "https://raw.githubusercontent.com/JMY12970/Unknown/main/"
+local Library = OzionUI or (getgenv and getgenv().OzionUI)
+assert(Library, "Paste the contents of OzionUI.lua above this line first.")
 
-local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(Repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(Repo .. "addons/SaveManager.lua"))()
+local SaveManager = Library.SaveManager
+local ThemeManager = Library.ThemeManager
 
 --//////////////////////////////////////////////////////////////// window //
 
@@ -248,9 +253,8 @@ Tabs.Settings:UpdateWarningBox({
 	Visible = true,
 })
 
-ThemeManager:SetLibrary(Library)
-SaveManager:SetLibrary(Library)
-
+-- SaveManager / ThemeManager are already pointed at the library for you,
+-- so all that is left is picking folders and building the panels.
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
 
@@ -286,5 +290,3 @@ Library:Notify({
 	Time = 6,
 	Type = "Success",
 })
-
-return Library

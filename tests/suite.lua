@@ -79,9 +79,15 @@ print("OzionUI test suite")
 section("loading")
 
 local Library
-test("Library.lua loads and returns a table", function()
-	Library = LOAD_CHUNK("Library.lua")()
-	assert(type(Library) == "table", "expected a table")
+test("OzionUI.lua runs as a standalone chunk", function()
+	-- the bundle has no `return`, exactly like a pasted script: it publishes
+	-- itself through getgenv() instead
+	local Chunk = LOAD_CHUNK("OzionUI.lua")
+	local Result = Chunk()
+	assert(Result == nil, "the bundle must not return a value (users paste code under it)")
+
+	Library = getgenv().OzionUI
+	assert(type(Library) == "table", "getgenv().OzionUI was not set")
 	assert(Library.Name == "OzionUI", "wrong library name")
 	assert(type(Library.Version) == "string", "missing version")
 end)
@@ -90,6 +96,22 @@ test("globals are exported through getgenv", function()
 	local genv = getgenv()
 	assert(genv.Toggles == Library.Toggles, "Toggles not exported")
 	assert(genv.Options == Library.Options, "Options not exported")
+	assert(genv.Library == Library, "Library alias not exported")
+end)
+
+test("the addons ship inside the bundle, already wired up", function()
+	assert(type(Library.SaveManager) == "table", "Library.SaveManager missing")
+	assert(type(Library.ThemeManager) == "table", "Library.ThemeManager missing")
+	assert(Library.SaveManager.Library == Library, "SaveManager:SetLibrary was not called for us")
+	assert(Library.ThemeManager.Library == Library, "ThemeManager:SetLibrary was not called for us")
+	assert(getgenv().SaveManager == Library.SaveManager, "SaveManager not exported")
+	assert(getgenv().ThemeManager == Library.ThemeManager, "ThemeManager not exported")
+end)
+
+test("the bundle never reaches out to the internet", function()
+	local source = FILES["OzionUI.lua"]
+	assert(not source:find("loadstring", 1, true), "loadstring found in the bundle")
+	assert(not source:find("HttpGet", 1, true), "HttpGet found in the bundle")
 end)
 
 local Toggles = Library.Toggles
@@ -732,13 +754,13 @@ end)
 
 ------------------------------------------------------------------- addons --
 
-if FILES["addons/SaveManager.lua"] then
+do
 	section("SaveManager")
 
 	local SaveManager
-	test("loads", function()
-		SaveManager = LOAD_CHUNK("addons/SaveManager.lua")()
-		SaveManager:SetLibrary(Library)
+	test("comes bundled and configured", function()
+		SaveManager = Library.SaveManager
+		assert(SaveManager, "SaveManager missing from the bundle")
 		SaveManager:SetFolder("OzionUITests")
 		SaveManager:IgnoreThemeSettings()
 		SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
@@ -799,13 +821,13 @@ if FILES["addons/SaveManager.lua"] then
 	end)
 end
 
-if FILES["addons/ThemeManager.lua"] then
+do
 	section("ThemeManager")
 
 	local ThemeManager
-	test("loads", function()
-		ThemeManager = LOAD_CHUNK("addons/ThemeManager.lua")()
-		ThemeManager:SetLibrary(Library)
+	test("comes bundled and configured", function()
+		ThemeManager = Library.ThemeManager
+		assert(ThemeManager, "ThemeManager missing from the bundle")
 		ThemeManager:SetFolder("OzionUITests")
 	end)
 
@@ -870,8 +892,7 @@ end)
 if FILES["Example.lua"] then
 	section("Example.lua")
 
-	test("runs verbatim with HttpGet + loadstring stubbed", function()
-		-- pretend the raw github urls resolve to the files in this repo
+	test("runs verbatim underneath a fresh copy of the bundle", function()
 		rawget(Mock.Services.CoreGui, "__children")[1] = nil
 		function Mock.Services.CoreGui:GetChildren()
 			local out = {}
@@ -881,30 +902,18 @@ if FILES["Example.lua"] then
 			return out
 		end
 
-		_G.loadstring = function(source, name)
-			local fn, err = load(source, name or "@httpget")
-			if not fn then
-				error("loadstring failed: " .. tostring(err), 0)
-			end
-			return fn
-		end
-
 		local gameProps = rawget(_G.game, "__props")
 		gameProps.PlaceId = 1818
-		_G.game.HttpGet = function(_, url)
-			for _, candidate in ipairs({ url:match("([^/]+/[^/]+%.lua)$"), url:match("([^/]+%.lua)$") }) do
-				if FILES[candidate] then
-					return FILES[candidate]
-				end
-			end
-			error("HttpGet: nothing mocked for " .. tostring(url), 0)
-		end
-		_G.game.HttpGetAsync = _G.game.HttpGet
 
-		local ExampleLibrary = LOAD_CHUNK("Example.lua")()
+		-- this is literally what a user does: paste the bundle, then the script
+		LOAD_CHUNK("OzionUI.lua")()
+		local ExampleLibrary = getgenv().OzionUI
+		assert(ExampleLibrary ~= Library, "expected a fresh library instance")
+
+		local Result = LOAD_CHUNK("Example.lua")()
+		assert(Result == nil, "example scripts should not need to return anything")
 		Mock.Flush()
 
-		assert(ExampleLibrary, "example returned nothing")
 		assert(ExampleLibrary.Window, "example did not create a window")
 		assert(#ExampleLibrary.Window.Tabs == 4, "expected 4 tabs")
 		assert(ExampleLibrary.Toggles.AutoFarm, "AutoFarm toggle missing")
@@ -912,6 +921,7 @@ if FILES["Example.lua"] then
 		assert(ExampleLibrary.Options.TargetPlayer, "player dropdown missing")
 		assert(ExampleLibrary.ToggleKeybind == ExampleLibrary.Options.MenuKeybind, "menu keybind not wired up")
 		assert(ExampleLibrary.Watermark.Visible == true, "watermark should be on")
+		assert(ExampleLibrary.Options.SaveManager_ConfigList, "bundled SaveManager section missing")
 
 		-- drive a couple of things to be sure the wiring is live
 		ExampleLibrary.Toggles.CustomSpeed:SetValue(true)
@@ -919,6 +929,26 @@ if FILES["Example.lua"] then
 		assert(ExampleLibrary.Options.WalkSpeed, "dependency box element missing")
 
 		ExampleLibrary:Unload()
+	end)
+end
+
+if FILES["examples/Template.lua"] then
+	section("examples/Template.lua")
+
+	test("the starter template runs too", function()
+		LOAD_CHUNK("OzionUI.lua")()
+		local TemplateLibrary = getgenv().OzionUI
+
+		LOAD_CHUNK("examples/Template.lua")()
+		Mock.Flush()
+
+		assert(TemplateLibrary.Window, "template did not create a window")
+		assert(#TemplateLibrary.Window.Tabs == 2, "expected 2 tabs")
+		assert(TemplateLibrary.Toggles.AutoFarm, "AutoFarm toggle missing")
+		assert(TemplateLibrary.Options.HighlightColor, "colour picker missing")
+		assert(TemplateLibrary.Options.PanicKey, "key picker missing")
+
+		TemplateLibrary:Unload()
 	end)
 end
 

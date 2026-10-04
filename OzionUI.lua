@@ -7,18 +7,41 @@
      ╚═════╝ ╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝ ╚═╝
 
     OzionUI  --  v1.0.0
-    A heavily animated, executor-ready UI library for Roblox.
+    An animated, executor ready UI library for Roblox.
 
-    Drop-in familiar: the public API mirrors the Obsidian / Linoria style,
-    so scripts written for those libraries only need their loadstring swapped.
+    ----------------------------------------------------------------------
+    SETUP
+    ----------------------------------------------------------------------
+    Copy this entire file into your script, then write your own code
+    underneath the marker at the very bottom. These names are ready to use:
 
-    Usage:
-        local Library = loadstring(game:HttpGet("<raw url>/Library.lua"))()
+        OzionUI       the library          (alias: Library)
+        SaveManager   config save / load
+        ThemeManager  colour themes
+        Toggles       every toggle you create, by index
+        Options       every other element, by index
 
-    Docs: see README.md + docs/ in the repository.
+    Minimal script:
+
+        local Window = OzionUI:CreateWindow({ Title = "My Script" })
+        local Tab    = Window:AddTab("Main", "home")
+        local Box    = Tab:AddLeftGroupbox("Features", "zap")
+
+        Box:AddToggle("AutoFarm", {
+            Text = "Auto farm",
+            Callback = function(Value) print(Value) end,
+        })
+
+    Full documentation: README.md and docs/API.md
     License: MIT
 ]]
 
+local OzionUI_Library, OzionUI_SaveManager, OzionUI_ThemeManager
+
+--[==========================================================================[
+--  OzionUI -- the library
+--]==========================================================================]
+do
 --//////////////////////////////////////////////////////////////////////////
 --// Environment                                                          //
 --//////////////////////////////////////////////////////////////////////////
@@ -5506,4 +5529,1053 @@ Library.Destroy = Library.Unload
 
 --//////////////////////////////////////////////////////////////////////////
 
-return Library
+	OzionUI_Library = Library
+end
+
+--[==========================================================================[
+--  OzionUI -- SaveManager (configs)
+--]==========================================================================]
+do
+local HttpService = game:GetService("HttpService")
+
+local SaveManager = {
+	Folder = "OzionUI",
+	SubFolder = "",
+	Library = nil,
+	Ignore = {},
+	Options = nil,
+	Toggles = nil,
+}
+
+------------------------------------------------------------------ file IO --
+
+local FS = {
+	isfolder = isfolder,
+	makefolder = makefolder,
+	isfile = isfile,
+	readfile = readfile,
+	writefile = writefile,
+	delfile = delfile,
+	listfiles = listfiles,
+}
+
+function SaveManager:IsSupported()
+	return type(FS.writefile) == "function" and type(FS.readfile) == "function" and type(FS.isfile) == "function"
+end
+
+local function SafeCall(Function, ...)
+	if type(Function) ~= "function" then
+		return false, "unsupported executor function"
+	end
+	local Results = { pcall(Function, ...) }
+	local Ok = table.remove(Results, 1)
+	return Ok, Results[1]
+end
+
+----------------------------------------------------------------- parsers --
+
+SaveManager.Parser = {
+	Toggle = {
+		Save = function(Index, Object)
+			return { type = "Toggle", idx = Index, value = Object.Value }
+		end,
+		Load = function(Index, Data, Self)
+			local Toggle = Self.Toggles[Index]
+			if Toggle then
+				Toggle:SetValue(Data.value)
+			end
+		end,
+	},
+	Slider = {
+		Save = function(Index, Object)
+			return { type = "Slider", idx = Index, value = tostring(Object.Value) }
+		end,
+		Load = function(Index, Data, Self)
+			local Slider = Self.Options[Index]
+			if Slider then
+				Slider:SetValue(tonumber(Data.value) or 0)
+			end
+		end,
+	},
+	Dropdown = {
+		Save = function(Index, Object)
+			return { type = "Dropdown", idx = Index, value = Object.Value, multi = Object.Multi }
+		end,
+		Load = function(Index, Data, Self)
+			local Dropdown = Self.Options[Index]
+			if Dropdown then
+				Dropdown:SetValue(Data.value)
+			end
+		end,
+	},
+	ColorPicker = {
+		Save = function(Index, Object, Self)
+			return {
+				type = "ColorPicker",
+				idx = Index,
+				value = Self.Library:ColorToHex(Object.Value),
+				transparency = Object.Transparency,
+			}
+		end,
+		Load = function(Index, Data, Self)
+			local Picker = Self.Options[Index]
+			if Picker then
+				Picker:SetValue(Data.value, Data.transparency)
+			end
+		end,
+	},
+	KeyPicker = {
+		Save = function(Index, Object)
+			return { type = "KeyPicker", idx = Index, value = { Object.Value, Object.Mode } }
+		end,
+		Load = function(Index, Data, Self)
+			local Picker = Self.Options[Index]
+			if Picker then
+				Picker:SetValue(Data.value)
+			end
+		end,
+	},
+	Input = {
+		Save = function(Index, Object)
+			return { type = "Input", idx = Index, text = Object.Value }
+		end,
+		Load = function(Index, Data, Self)
+			local Input = Self.Options[Index]
+			if Input and type(Data.text) == "string" then
+				Input:SetValue(Data.text)
+			end
+		end,
+	},
+}
+
+------------------------------------------------------------------- config --
+
+function SaveManager:SetLibrary(Library)
+	self.Library = Library
+	self.Options = Library.Options
+	self.Toggles = Library.Toggles
+	return self
+end
+
+function SaveManager:SetFolder(Folder)
+	self.Folder = Folder
+	self:BuildFolderTree()
+	return self
+end
+
+function SaveManager:SetSubFolder(SubFolder)
+	self.SubFolder = SubFolder
+	self:BuildFolderTree()
+	return self
+end
+
+function SaveManager:SetIgnoreIndexes(List)
+	for _, Index in pairs(List or {}) do
+		self.Ignore[Index] = true
+	end
+	return self
+end
+
+function SaveManager:IgnoreThemeSettings()
+	self:SetIgnoreIndexes({
+		"BackgroundColor",
+		"MainColor",
+		"AccentColor",
+		"OutlineColor",
+		"FontColor",
+		"ThemeManager_ThemeList",
+		"ThemeManager_CustomThemeList",
+		"ThemeManager_CustomThemeName",
+		"ThemeManager_Font",
+		"ThemeManager_DPIScale",
+	})
+	return self
+end
+
+function SaveManager:GetPaths()
+	local Base = self.Folder
+	local Settings = Base .. "/settings"
+	if self.SubFolder and self.SubFolder ~= "" then
+		Settings = Base .. "/settings/" .. self.SubFolder
+	end
+	return Base, Settings
+end
+
+function SaveManager:BuildFolderTree()
+	if not FS.makefolder then
+		return
+	end
+	local Base, Settings = self:GetPaths()
+	local Paths = { Base, Base .. "/settings", Base .. "/themes", Settings }
+	for _, Path in pairs(Paths) do
+		if not SafeCall(FS.isfolder, Path) or not FS.isfolder(Path) then
+			SafeCall(FS.makefolder, Path)
+		end
+	end
+	return self
+end
+
+--------------------------------------------------------------- save / load --
+
+function SaveManager:GetConfigPath(Name)
+	local _, Settings = self:GetPaths()
+	return Settings .. "/" .. tostring(Name) .. ".json"
+end
+
+function SaveManager:Save(Name)
+	if not Name or Name == "" then
+		return false, "no config name given"
+	end
+	if not self:IsSupported() then
+		return false, "your executor does not support file writing"
+	end
+
+	self:BuildFolderTree()
+
+	local Data = { version = 1, objects = {} }
+
+	for Index, Toggle in pairs(self.Toggles) do
+		if not self.Ignore[Index] then
+			table.insert(Data.objects, self.Parser.Toggle.Save(Index, Toggle, self))
+		end
+	end
+
+	for Index, Option in pairs(self.Options) do
+		local Parser = self.Parser[Option.Type]
+		if Parser and not self.Ignore[Index] then
+			table.insert(Data.objects, Parser.Save(Index, Option, self))
+		end
+	end
+
+	local Ok, Encoded = pcall(function()
+		return HttpService:JSONEncode(Data)
+	end)
+	if not Ok then
+		return false, "failed to encode the config"
+	end
+
+	local Written = SafeCall(FS.writefile, self:GetConfigPath(Name), Encoded)
+	if not Written then
+		return false, "failed to write the config file"
+	end
+
+	return true
+end
+
+function SaveManager:Load(Name)
+	if not Name or Name == "" then
+		return false, "no config name given"
+	end
+
+	local Path = self:GetConfigPath(Name)
+	if not FS.isfile or not FS.isfile(Path) then
+		return false, "that config does not exist"
+	end
+
+	local Ok, Contents = SafeCall(FS.readfile, Path)
+	if not Ok then
+		return false, "failed to read the config file"
+	end
+
+	local Decoded
+	local Success = pcall(function()
+		Decoded = HttpService:JSONDecode(Contents)
+	end)
+	if not Success or type(Decoded) ~= "table" then
+		return false, "that config is corrupted"
+	end
+
+	for _, Object in pairs(Decoded.objects or {}) do
+		local Parser = self.Parser[Object.type]
+		if Parser and not self.Ignore[Object.idx] then
+			pcall(function()
+				Parser.Load(Object.idx, Object, self)
+			end)
+		end
+	end
+
+	return true
+end
+
+function SaveManager:Delete(Name)
+	local Path = self:GetConfigPath(Name)
+	if not FS.isfile or not FS.isfile(Path) then
+		return false, "that config does not exist"
+	end
+	local Ok = SafeCall(FS.delfile, Path)
+	return Ok, Ok and nil or "failed to delete the config"
+end
+
+function SaveManager:RefreshConfigList()
+	local List = {}
+	if not FS.listfiles then
+		return List
+	end
+
+	local _, Settings = self:GetPaths()
+	local Ok, Files = SafeCall(FS.listfiles, Settings)
+	if not Ok or type(Files) ~= "table" then
+		return List
+	end
+
+	for _, Path in pairs(Files) do
+		if type(Path) == "string" and Path:sub(-5) == ".json" then
+			local Name = Path:match("([^/\\]+)%.json$")
+			if Name and Name ~= "autoload" then
+				table.insert(List, Name)
+			end
+		end
+	end
+
+	table.sort(List)
+	return List
+end
+
+---------------------------------------------------------------- autoload --
+
+function SaveManager:GetAutoloadPath()
+	local _, Settings = self:GetPaths()
+	return Settings .. "/autoload.txt"
+end
+
+function SaveManager:SetAutoLoadConfig(Name)
+	self:BuildFolderTree()
+	SafeCall(FS.writefile, self:GetAutoloadPath(), tostring(Name))
+	return self
+end
+
+function SaveManager:GetAutoloadConfig()
+	local Path = self:GetAutoloadPath()
+	if FS.isfile and FS.isfile(Path) then
+		local Ok, Name = SafeCall(FS.readfile, Path)
+		if Ok and Name and Name ~= "" then
+			return Name
+		end
+	end
+	return nil
+end
+
+function SaveManager:DeleteAutoLoadConfig()
+	local Path = self:GetAutoloadPath()
+	if FS.isfile and FS.isfile(Path) then
+		SafeCall(FS.delfile, Path)
+	end
+	return self
+end
+
+function SaveManager:LoadAutoloadConfig()
+	local Name = self:GetAutoloadConfig()
+	if not Name then
+		return false
+	end
+
+	local Ok, Error = self:Load(Name)
+	if not Ok then
+		if self.Library then
+			self.Library:Notify({
+				Title = "Autoload failed",
+				Description = tostring(Error),
+				Time = 5,
+				Type = "Error",
+			})
+		end
+		return false
+	end
+
+	if self.Library then
+		self.Library:Notify({
+			Title = "Config loaded",
+			Description = "Automatically loaded '" .. Name .. "'.",
+			Time = 4,
+			Type = "Success",
+		})
+	end
+	return true
+end
+
+------------------------------------------------------------------ the UI --
+
+function SaveManager:BuildConfigSection(Tab, Side)
+	assert(self.Library, "SaveManager:SetLibrary(Library) must be called first")
+
+	local Library = self.Library
+	local Groupbox = (Side == "Right") and Tab:AddRightGroupbox("Configuration", "save")
+		or Tab:AddLeftGroupbox("Configuration", "save")
+
+	self:SetIgnoreIndexes({
+		"SaveManager_ConfigName",
+		"SaveManager_ConfigList",
+		"SaveManager_AutoloadLabel",
+	})
+
+	Groupbox:AddInput("SaveManager_ConfigName", {
+		Text = "Config name",
+		Placeholder = "my-config",
+		Tooltip = "The name used when creating a new config.",
+	})
+
+	Groupbox:AddDropdown("SaveManager_ConfigList", {
+		Text = "Saved configs",
+		Values = self:RefreshConfigList(),
+		AllowNull = true,
+		Searchable = true,
+		Tooltip = "Pick a config to load, overwrite, delete or autoload.",
+	})
+
+	local AutoloadLabel = Groupbox:AddLabel("Autoload: none", true)
+
+	local function Refresh()
+		local Options = Library.Options
+		Options.SaveManager_ConfigList:SetValues(self:RefreshConfigList())
+	end
+
+	local function Selected()
+		return Library.Options.SaveManager_ConfigList.Value
+	end
+
+	Groupbox:AddDivider()
+
+	Groupbox:AddButton({
+		Text = "Create config",
+		Tooltip = "Saves the current settings under the name above.",
+		Func = function()
+			local Name = Library.Options.SaveManager_ConfigName.Value
+			if not Name or Name:gsub(" ", "") == "" then
+				return Library:Notify({
+					Title = "Missing name",
+					Description = "Type a config name first.",
+					Time = 4,
+					Type = "Warning",
+				})
+			end
+
+			local Ok, Error = self:Save(Name)
+			if not Ok then
+				return Library:Notify({ Title = "Save failed", Description = tostring(Error), Time = 5, Type = "Error" })
+			end
+
+			Library:Notify({ Title = "Config saved", Description = "Created '" .. Name .. "'.", Time = 4, Type = "Success" })
+			Refresh()
+		end,
+	}):AddButton({
+		Text = "Overwrite",
+		Tooltip = "Saves the current settings over the selected config.",
+		Func = function()
+			local Name = Selected()
+			if not Name then
+				return Library:Notify({ Title = "Nothing selected", Description = "Pick a config first.", Time = 4, Type = "Warning" })
+			end
+			local Ok, Error = self:Save(Name)
+			if not Ok then
+				return Library:Notify({ Title = "Save failed", Description = tostring(Error), Time = 5, Type = "Error" })
+			end
+			Library:Notify({ Title = "Config saved", Description = "Overwrote '" .. Name .. "'.", Time = 4, Type = "Success" })
+		end,
+	})
+
+	Groupbox:AddButton({
+		Text = "Load config",
+		Func = function()
+			local Name = Selected()
+			if not Name then
+				return Library:Notify({ Title = "Nothing selected", Description = "Pick a config first.", Time = 4, Type = "Warning" })
+			end
+			local Ok, Error = self:Load(Name)
+			if not Ok then
+				return Library:Notify({ Title = "Load failed", Description = tostring(Error), Time = 5, Type = "Error" })
+			end
+			Library:Notify({ Title = "Config loaded", Description = "Loaded '" .. Name .. "'.", Time = 4, Type = "Success" })
+		end,
+	}):AddButton({
+		Text = "Delete config",
+		DoubleClick = true,
+		Func = function()
+			local Name = Selected()
+			if not Name then
+				return Library:Notify({ Title = "Nothing selected", Description = "Pick a config first.", Time = 4, Type = "Warning" })
+			end
+			local Ok, Error = self:Delete(Name)
+			if not Ok then
+				return Library:Notify({ Title = "Delete failed", Description = tostring(Error), Time = 5, Type = "Error" })
+			end
+			Library:Notify({ Title = "Config deleted", Description = "Removed '" .. Name .. "'.", Time = 4, Type = "Success" })
+			Refresh()
+		end,
+	})
+
+	Groupbox:AddButton({
+		Text = "Refresh list",
+		Func = function()
+			Refresh()
+			Library:Notify({ Title = "Configs", Description = "List refreshed.", Time = 3 })
+		end,
+	}):AddButton({
+		Text = "Set as autoload",
+		Func = function()
+			local Name = Selected()
+			if not Name then
+				return Library:Notify({ Title = "Nothing selected", Description = "Pick a config first.", Time = 4, Type = "Warning" })
+			end
+			self:SetAutoLoadConfig(Name)
+			AutoloadLabel:SetText("Autoload: " .. Name)
+			Library:Notify({ Title = "Autoload set", Description = "'" .. Name .. "' will load on launch.", Time = 4, Type = "Success" })
+		end,
+	})
+
+	Groupbox:AddButton({
+		Text = "Clear autoload",
+		Func = function()
+			self:DeleteAutoLoadConfig()
+			AutoloadLabel:SetText("Autoload: none")
+			Library:Notify({ Title = "Autoload cleared", Time = 3 })
+		end,
+	})
+
+	local Current = self:GetAutoloadConfig()
+	if Current then
+		AutoloadLabel:SetText("Autoload: " .. Current)
+	end
+
+	self.ConfigGroupbox = Groupbox
+	return Groupbox
+end
+
+-- Obsidian / Linoria alias
+SaveManager.BuildConfigTab = SaveManager.BuildConfigSection
+
+	OzionUI_SaveManager = SaveManager
+end
+
+--[==========================================================================[
+--  OzionUI -- ThemeManager (themes)
+--]==========================================================================]
+do
+local HttpService = game:GetService("HttpService")
+
+local ThemeManager = {
+	Folder = "OzionUI",
+	Library = nil,
+	BuiltInThemes = {},
+	CustomThemes = {},
+}
+
+local FS = {
+	isfolder = isfolder,
+	makefolder = makefolder,
+	isfile = isfile,
+	readfile = readfile,
+	writefile = writefile,
+	delfile = delfile,
+	listfiles = listfiles,
+}
+
+local function SafeCall(Function, ...)
+	if type(Function) ~= "function" then
+		return false
+	end
+	local Results = { pcall(Function, ...) }
+	local Ok = table.remove(Results, 1)
+	return Ok, Results[1]
+end
+
+---------------------------------------------------------------- the themes --
+
+-- hex strings keep the file format identical to Obsidian / Linoria themes
+ThemeManager.BuiltInThemes = {
+	Ozion = {
+		BackgroundColor = "0C0C10",
+		MainColor = "14141B",
+		AccentColor = "7D5AFF",
+		OutlineColor = "282834",
+		FontColor = "F0F0FA",
+	},
+	Midnight = {
+		BackgroundColor = "0B0E14",
+		MainColor = "131722",
+		AccentColor = "3D7EFF",
+		OutlineColor = "232A3A",
+		FontColor = "E6ECFF",
+	},
+	Fatality = {
+		BackgroundColor = "1E1842",
+		MainColor = "191335",
+		AccentColor = "C50754",
+		OutlineColor = "322A5E",
+		FontColor = "FFFFFF",
+	},
+	Jester = {
+		BackgroundColor = "1B1B1B",
+		MainColor = "242424",
+		AccentColor = "DB4D4D",
+		OutlineColor = "3B3B3B",
+		FontColor = "FFFFFF",
+	},
+	Mint = {
+		BackgroundColor = "0F1A17",
+		MainColor = "16241F",
+		AccentColor = "3CE0A3",
+		OutlineColor = "24382F",
+		FontColor = "E8FFF6",
+	},
+	["Tokyo Night"] = {
+		BackgroundColor = "1A1B26",
+		MainColor = "24283B",
+		AccentColor = "7AA2F7",
+		OutlineColor = "343A52",
+		FontColor = "C0CAF5",
+	},
+	Vaporwave = {
+		BackgroundColor = "16102A",
+		MainColor = "1F1740",
+		AccentColor = "FF5FD2",
+		OutlineColor = "342A5E",
+		FontColor = "F2E9FF",
+	},
+	Ember = {
+		BackgroundColor = "120D0B",
+		MainColor = "1C1513",
+		AccentColor = "FF6B35",
+		OutlineColor = "33251F",
+		FontColor = "FFEFE6",
+	},
+	Quartz = {
+		BackgroundColor = "17171C",
+		MainColor = "212128",
+		AccentColor = "A8A8C0",
+		OutlineColor = "32323C",
+		FontColor = "F2F2F7",
+	},
+	Monochrome = {
+		BackgroundColor = "0A0A0A",
+		MainColor = "151515",
+		AccentColor = "FFFFFF",
+		OutlineColor = "2A2A2A",
+		FontColor = "F5F5F5",
+	},
+	Ubuntu = {
+		BackgroundColor = "1D1715",
+		MainColor = "2A211E",
+		AccentColor = "E95420",
+		OutlineColor = "3E312C",
+		FontColor = "FFF3EC",
+	},
+	Bloom = {
+		BackgroundColor = "140F16",
+		MainColor = "1D1620",
+		AccentColor = "FF4FA3",
+		OutlineColor = "32263A",
+		FontColor = "FFEAF4",
+	},
+}
+
+local SchemeKeys = { "BackgroundColor", "MainColor", "AccentColor", "OutlineColor", "FontColor" }
+
+----------------------------------------------------------------- plumbing --
+
+function ThemeManager:SetLibrary(Library)
+	self.Library = Library
+	return self
+end
+
+function ThemeManager:SetFolder(Folder)
+	self.Folder = Folder
+	self:BuildFolderTree()
+	return self
+end
+
+function ThemeManager:GetThemesPath()
+	return self.Folder .. "/themes"
+end
+
+function ThemeManager:BuildFolderTree()
+	if not FS.makefolder then
+		return self
+	end
+	for _, Path in pairs({ self.Folder, self:GetThemesPath() }) do
+		local Ok, Exists = SafeCall(FS.isfolder, Path)
+		if not Ok or not Exists then
+			SafeCall(FS.makefolder, Path)
+		end
+	end
+	return self
+end
+
+function ThemeManager:IsSupported()
+	return type(FS.writefile) == "function" and type(FS.readfile) == "function"
+end
+
+------------------------------------------------------------------- themes --
+
+function ThemeManager:GetCustomThemeList()
+	local List = {}
+	if not FS.listfiles then
+		return List
+	end
+
+	local Ok, Files = SafeCall(FS.listfiles, self:GetThemesPath())
+	if not Ok or type(Files) ~= "table" then
+		return List
+	end
+
+	for _, Path in pairs(Files) do
+		if type(Path) == "string" and Path:sub(-5) == ".json" then
+			local Name = Path:match("([^/\\]+)%.json$")
+			if Name then
+				table.insert(List, Name)
+			end
+		end
+	end
+
+	table.sort(List)
+	return List
+end
+
+function ThemeManager:GetTheme(Name)
+	if self.BuiltInThemes[Name] then
+		return self.BuiltInThemes[Name], "builtin"
+	end
+
+	local Path = self:GetThemesPath() .. "/" .. tostring(Name) .. ".json"
+	if FS.isfile and FS.isfile(Path) then
+		local Ok, Contents = SafeCall(FS.readfile, Path)
+		if Ok then
+			local Decoded
+			local Success = pcall(function()
+				Decoded = HttpService:JSONDecode(Contents)
+			end)
+			if Success and type(Decoded) == "table" then
+				return Decoded, "custom"
+			end
+		end
+	end
+
+	return nil
+end
+
+function ThemeManager:ApplyTheme(Name)
+	assert(self.Library, "ThemeManager:SetLibrary(Library) must be called first")
+
+	local Theme = self:GetTheme(Name)
+	if not Theme then
+		return false, "unknown theme '" .. tostring(Name) .. "'"
+	end
+
+	local Library = self.Library
+
+	for _, Key in pairs(SchemeKeys) do
+		local Value = Theme[Key]
+		if Value then
+			local Color = type(Value) == "string" and Library:HexToColor(Value) or Value
+			if Color then
+				Library.Scheme[Key] = Color
+			end
+		end
+	end
+
+	if Theme.Font then
+		Library:SetFont(Theme.Font)
+	end
+
+	Library:UpdateColorsUsingRegistry()
+	self:UpdatePickers()
+	self.CurrentTheme = Name
+	return true
+end
+
+function ThemeManager:UpdatePickers()
+	local Library = self.Library
+	if not Library then
+		return
+	end
+	for _, Key in pairs(SchemeKeys) do
+		local Picker = Library.Options[Key]
+		if Picker and Picker.SetValue then
+			pcall(function()
+				Picker:SetValue(Library.Scheme[Key], nil, true)
+			end)
+		end
+	end
+end
+
+function ThemeManager:GetCurrentThemeTable()
+	local Library = self.Library
+	local Theme = {}
+	for _, Key in pairs(SchemeKeys) do
+		Theme[Key] = Library:ColorToHex(Library.Scheme[Key]):gsub("#", "")
+	end
+	return Theme
+end
+
+function ThemeManager:SaveCustomTheme(Name)
+	if not Name or Name:gsub(" ", "") == "" then
+		return false, "no theme name given"
+	end
+	if not self:IsSupported() then
+		return false, "your executor does not support file writing"
+	end
+
+	self:BuildFolderTree()
+
+	local Encoded
+	local Ok = pcall(function()
+		Encoded = HttpService:JSONEncode(self:GetCurrentThemeTable())
+	end)
+	if not Ok then
+		return false, "failed to encode the theme"
+	end
+
+	SafeCall(FS.writefile, self:GetThemesPath() .. "/" .. Name .. ".json", Encoded)
+	return true
+end
+
+function ThemeManager:Delete(Name)
+	local Path = self:GetThemesPath() .. "/" .. tostring(Name) .. ".json"
+	if not FS.isfile or not FS.isfile(Path) then
+		return false, "that theme does not exist"
+	end
+	SafeCall(FS.delfile, Path)
+	return true
+end
+
+------------------------------------------------------------------ default --
+
+function ThemeManager:GetDefaultPath()
+	return self:GetThemesPath() .. "/default.txt"
+end
+
+function ThemeManager:SaveDefault(Name)
+	self:BuildFolderTree()
+	SafeCall(FS.writefile, self:GetDefaultPath(), tostring(Name))
+	return self
+end
+
+function ThemeManager:LoadDefault()
+	local Path = self:GetDefaultPath()
+	local Name = "Ozion"
+
+	if FS.isfile and FS.isfile(Path) then
+		local Ok, Contents = SafeCall(FS.readfile, Path)
+		if Ok and Contents and Contents ~= "" then
+			Name = Contents
+		end
+	end
+
+	if not self:GetTheme(Name) then
+		Name = "Ozion"
+	end
+
+	return self:ApplyTheme(Name)
+end
+
+------------------------------------------------------------------- the UI --
+
+function ThemeManager:ApplyToGroupbox(Groupbox)
+	assert(self.Library, "ThemeManager:SetLibrary(Library) must be called first")
+
+	local Library = self.Library
+	local Options = Library.Options
+
+	local ThemeNames = {}
+	for Name in pairs(self.BuiltInThemes) do
+		table.insert(ThemeNames, Name)
+	end
+	table.sort(ThemeNames)
+
+	Groupbox:AddDropdown("ThemeManager_ThemeList", {
+		Text = "Theme",
+		Values = ThemeNames,
+		Default = self.CurrentTheme or "Ozion",
+		Searchable = true,
+		Callback = function(Value)
+			if Value then
+				self:ApplyTheme(Value)
+			end
+		end,
+	})
+
+	local FontNames = {}
+	for Name in pairs(Library.Fonts) do
+		table.insert(FontNames, Name)
+	end
+	table.sort(FontNames)
+
+	Groupbox:AddDropdown("ThemeManager_Font", {
+		Text = "Font",
+		Values = FontNames,
+		Default = "GothamMedium",
+		Callback = function(Value)
+			Library:SetFont(Value)
+		end,
+	})
+
+	Groupbox:AddSlider("ThemeManager_DPIScale", {
+		Text = "UI scale",
+		Default = 100,
+		Min = 75,
+		Max = 150,
+		Rounding = 0,
+		Suffix = "%",
+		HideMax = true,
+		Callback = function(Value)
+			Library:SetDPIScale(Value)
+		end,
+	})
+
+	Groupbox:AddToggle("ThemeManager_Animations", {
+		Text = "Animations",
+		Default = Library.Animations,
+		Tooltip = "Turn every tween off if you want the absolute cheapest menu.",
+		Callback = function(Value)
+			Library.Animations = Value
+		end,
+	})
+
+	Groupbox:AddToggle("ThemeManager_CustomCursor", {
+		Text = "Custom cursor",
+		Default = Library.ShowCustomCursor,
+		Callback = function(Value)
+			Library.ShowCustomCursor = Value
+		end,
+	})
+
+	Groupbox:AddDivider()
+
+	local Labels = {
+		BackgroundColor = "Background",
+		MainColor = "Panels",
+		AccentColor = "Accent",
+		OutlineColor = "Outlines",
+		FontColor = "Text",
+	}
+
+	for _, Key in pairs(SchemeKeys) do
+		Groupbox:AddLabel(Labels[Key]):AddColorPicker(Key, {
+			Default = Library.Scheme[Key],
+			Title = Labels[Key],
+			Callback = function(Value)
+				Library.Scheme[Key] = Value
+				Library:UpdateColorsUsingRegistry()
+			end,
+		})
+	end
+
+	Groupbox:AddDivider()
+
+	Groupbox:AddInput("ThemeManager_CustomThemeName", {
+		Text = "Custom theme name",
+		Placeholder = "my-theme",
+	})
+
+	Groupbox:AddDropdown("ThemeManager_CustomThemeList", {
+		Text = "Saved themes",
+		Values = self:GetCustomThemeList(),
+		AllowNull = true,
+	})
+
+	local function RefreshCustom()
+		Options.ThemeManager_CustomThemeList:SetValues(self:GetCustomThemeList())
+	end
+
+	Groupbox:AddButton({
+		Text = "Save theme",
+		Func = function()
+			local Name = Options.ThemeManager_CustomThemeName.Value
+			local Ok, Error = self:SaveCustomTheme(Name)
+			if not Ok then
+				return Library:Notify({ Title = "Theme", Description = tostring(Error), Time = 4, Type = "Error" })
+			end
+			RefreshCustom()
+			Library:Notify({ Title = "Theme saved", Description = "Created '" .. Name .. "'.", Time = 4, Type = "Success" })
+		end,
+	}):AddButton({
+		Text = "Load theme",
+		Func = function()
+			local Name = Options.ThemeManager_CustomThemeList.Value
+			if not Name then
+				return Library:Notify({ Title = "Theme", Description = "Pick a saved theme first.", Time = 4, Type = "Warning" })
+			end
+			self:ApplyTheme(Name)
+			Library:Notify({ Title = "Theme applied", Description = Name, Time = 3, Type = "Success" })
+		end,
+	})
+
+	Groupbox:AddButton({
+		Text = "Delete theme",
+		DoubleClick = true,
+		Func = function()
+			local Name = Options.ThemeManager_CustomThemeList.Value
+			if not Name then
+				return
+			end
+			self:Delete(Name)
+			RefreshCustom()
+			Library:Notify({ Title = "Theme deleted", Description = Name, Time = 3 })
+		end,
+	}):AddButton({
+		Text = "Set as default",
+		Func = function()
+			local Name = Options.ThemeManager_ThemeList.Value or Options.ThemeManager_CustomThemeList.Value
+			if not Name then
+				return
+			end
+			self:SaveDefault(Name)
+			Library:Notify({ Title = "Default theme", Description = "'" .. Name .. "' will load on launch.", Time = 4, Type = "Success" })
+		end,
+	})
+
+	self.ThemeGroupbox = Groupbox
+	return Groupbox
+end
+
+function ThemeManager:ApplyToTab(Tab, Side)
+	local Groupbox = (Side == "Left") and Tab:AddLeftGroupbox("Appearance", "palette")
+		or Tab:AddRightGroupbox("Appearance", "palette")
+	return self:ApplyToGroupbox(Groupbox)
+end
+
+-- Obsidian / Linoria aliases
+ThemeManager.BuildThemeSection = ThemeManager.ApplyToTab
+ThemeManager.SetDefault = ThemeManager.SaveDefault
+
+	OzionUI_ThemeManager = ThemeManager
+end
+
+--[==========================================================================[
+--  Wiring
+--]==========================================================================]
+
+local OzionUI = OzionUI_Library
+local SaveManager = OzionUI_SaveManager
+local ThemeManager = OzionUI_ThemeManager
+
+SaveManager:SetLibrary(OzionUI)
+ThemeManager:SetLibrary(OzionUI)
+
+OzionUI.SaveManager = SaveManager
+OzionUI.ThemeManager = ThemeManager
+
+-- handy aliases so either naming style works in your script
+local Library = OzionUI
+local Toggles = OzionUI.Toggles
+local Options = OzionUI.Options
+
+if type(getgenv) == "function" then
+	local Global = getgenv()
+	Global.OzionUI = OzionUI
+	Global.Library = OzionUI
+	Global.SaveManager = SaveManager
+	Global.ThemeManager = ThemeManager
+	Global.Toggles = Toggles
+	Global.Options = Options
+end
+
+--[==========================================================================[
+--
+--   ####  YOUR SCRIPT GOES BELOW THIS LINE  ####
+--
+--   local Window = OzionUI:CreateWindow({ Title = "My Script" })
+--   local Tab    = Window:AddTab("Main", "home")
+--   local Box    = Tab:AddLeftGroupbox("Features", "zap")
+--   Box:AddToggle("AutoFarm", { Text = "Auto farm" })
+--
+--]==========================================================================]

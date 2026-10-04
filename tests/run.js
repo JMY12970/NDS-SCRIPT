@@ -4,8 +4,9 @@
  *   node tests/run.js
  *
  * Boots a Lua 5.4 VM (wasmoon), installs the Roblox API mock from
- * tests/mock_roblox.lua, loads Library.lua + the addons for real and drives
- * them through tests/suite.lua.  Exits non-zero when anything throws.
+ * tests/mock_roblox.lua, executes the single-file OzionUI.lua bundle exactly
+ * the way an executor would and drives it through tests/suite.lua.
+ * Exits non-zero when anything throws.
  */
 
 const fs = require("fs");
@@ -13,12 +14,11 @@ const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
 const FILES = [
-  "Library.lua",
-  "addons/SaveManager.lua",
-  "addons/ThemeManager.lua",
+  "OzionUI.lua",
   "tests/mock_roblox.lua",
   "tests/suite.lua",
   "Example.lua",
+  "examples/Template.lua",
 ];
 
 (async () => {

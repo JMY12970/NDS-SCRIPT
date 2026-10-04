@@ -2,6 +2,19 @@
 
 Everything the library exposes. Types are Luau-ish: `string?` means optional.
 
+OzionUI ships as one file. Paste `OzionUI.lua` into your script and these names
+are in scope below it:
+
+```lua
+OzionUI       -- the library (alias: Library)
+SaveManager   -- configs, already pointed at the library
+ThemeManager  -- themes, already pointed at the library
+Toggles       -- every toggle, by index
+Options       -- every other indexed element
+```
+
+Setup instructions live in [../README.md](../README.md).
+
 - [Library](#library)
 - [Window](#window)
 - [Tab](#tab)
@@ -49,8 +62,8 @@ Everything the library exposes. Types are Luau-ish: `string?` means optional.
 
 | Field | Type | Description |
 |---|---|---|
-| `Library.Toggles` / `_G.Toggles` | `table` | every toggle & checkbox by index |
-| `Library.Options` / `_G.Options` | `table` | every other indexed element |
+| `Library.Toggles` / `Toggles` | `table` | every toggle & checkbox by index |
+| `Library.Options` / `Options` | `table` | every other indexed element |
 | `Library.Toggled` | `boolean` | is the menu visible |
 | `Library.Unloaded` | `boolean` | flips to `true` on unload — loop on `while not Library.Unloaded` |
 | `Library.IsMobile` | `boolean` | touch without keyboard |
@@ -326,8 +339,10 @@ Left-click the button to rebind (Escape clears), right-click for the mode menu.
 
 ## SaveManager
 
+Bundled with the library and already `:SetLibrary`'d — also available as
+`OzionUI.SaveManager`.
+
 ```lua
-SaveManager:SetLibrary(Library)
 SaveManager:SetFolder("Hub/" .. game.PlaceId)   -- Hub/<id>/settings/*.json
 SaveManager:SetSubFolder("pvp")                 -- optional extra nesting
 SaveManager:IgnoreThemeSettings()
@@ -356,8 +371,10 @@ element types.
 
 ## ThemeManager
 
+Bundled with the library and already `:SetLibrary`'d — also available as
+`OzionUI.ThemeManager`.
+
 ```lua
-ThemeManager:SetLibrary(Library)
 ThemeManager:SetFolder("Hub")            -- Hub/themes/*.json
 ThemeManager:ApplyTheme("Tokyo Night")
 ThemeManager:ApplyToTab(Tab, "Left"|"Right")

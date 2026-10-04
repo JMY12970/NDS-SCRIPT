@@ -1,16 +1,16 @@
 --[[
-    OzionUI -- starter template.
+    OzionUI -- minimal starter.
 
-    Copy this file, rename it, and start filling in your own features.
-    Everything you do not need can be deleted; nothing here is mandatory
-    except the first three lines and CreateWindow.
+    1. Copy the whole of OzionUI.lua into your executor.
+    2. Paste this underneath it.
+    3. Execute, then start replacing the placeholder callbacks with your code.
 ]]
 
-local Repo = "https://raw.githubusercontent.com/JMY12970/Unknown/main/"
+local Library = OzionUI or (getgenv and getgenv().OzionUI)
+assert(Library, "Paste the contents of OzionUI.lua above this line first.")
 
-local Library = loadstring(game:HttpGet(Repo .. "Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet(Repo .. "addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet(Repo .. "addons/SaveManager.lua"))()
+local SaveManager = Library.SaveManager
+local ThemeManager = Library.ThemeManager
 
 -- 1. the window -----------------------------------------------------------
 
@@ -20,75 +20,84 @@ local Window = Library:CreateWindow({
 	Icon = "rocket",
 	Size = UDim2.fromOffset(620, 500),
 	AutoShow = true,
-	ToggleKeybind = Enum.KeyCode.RightControl,
+	ToggleKeybind = Enum.KeyCode.RightShift,
 })
 
 -- 2. tabs -----------------------------------------------------------------
 
-local Tabs = {
-	Main = Window:AddTab("Main", "home"),
-	Settings = Window:AddTab("Settings", "settings"),
-}
+local MainTab = Window:AddTab("Main", "home")
+local SettingsTab = Window:AddTab("Settings", "settings")
 
--- 3. your features --------------------------------------------------------
+-- 3. groupboxes and elements ----------------------------------------------
 
-local Box = Tabs.Main:AddLeftGroupbox("Features", "zap")
+local Box = MainTab:AddLeftGroupbox("Features", "zap")
 
-Box:AddToggle("MyToggle", {
-	Text = "Do the thing",
+Box:AddToggle("AutoFarm", {
+	Text = "Auto farm",
 	Default = false,
-	Tooltip = "Explain what this does",
+	Tooltip = "Turn the main loop on.",
 	Callback = function(Value)
-		print("toggle is now", Value)
+		print("auto farm:", Value)
 	end,
 })
 
-Box:AddSlider("MySlider", {
+Box:AddSlider("Speed", {
 	Text = "Speed",
-	Default = 50,
-	Min = 0,
+	Default = 16,
+	Min = 16,
 	Max = 100,
 	Rounding = 0,
 	Callback = function(Value)
-		print("speed is now", Value)
+		print("speed:", Value)
+	end,
+})
+
+Box:AddDropdown("Mode", {
+	Text = "Mode",
+	Values = { "Safe", "Fast", "Insane" },
+	Default = 1,
+	Callback = function(Value)
+		print("mode:", Value)
 	end,
 })
 
 Box:AddButton({
-	Text = "Run once",
+	Text = "Do the thing",
 	Func = function()
-		Library:Notify("Done!", 3)
+		Library:Notify("Did the thing.", 3)
 	end,
 })
 
--- 4. a loop that respects the toggle --------------------------------------
+-- colour and key pickers attach to any element
+Box:AddColorPicker("HighlightColor", {
+	Default = Color3.fromRGB(125, 90, 255),
+	Title = "Highlight",
+})
 
-task.spawn(function()
-	while not Library.Unloaded do
-		if Library.Toggles.MyToggle.Value then
-			-- ... do the thing, once per second ...
-		end
-		task.wait(1)
-	end
-end)
+Box:AddKeyPicker("PanicKey", {
+	Default = "P",
+	Mode = "Toggle",
+	Text = "Panic",
+})
 
--- 5. settings tab: configs + theme ----------------------------------------
-
-SaveManager:SetLibrary(Library)
-ThemeManager:SetLibrary(Library)
+-- 4. configs and themes ---------------------------------------------------
+-- SaveManager and ThemeManager are already pointed at the library.
 
 SaveManager:IgnoreThemeSettings()
 ThemeManager:SetFolder("MyScript")
-SaveManager:SetFolder("MyScript/" .. tostring(game.PlaceId))
+SaveManager:SetFolder("MyScript/game")
 
-SaveManager:BuildConfigSection(Tabs.Settings)
-ThemeManager:ApplyToTab(Tabs.Settings)
+SaveManager:BuildConfigSection(SettingsTab)
+ThemeManager:ApplyToTab(SettingsTab)
 
+-- 5. finish ---------------------------------------------------------------
+
+Library:SetWatermark("My Script | OzionUI")
 SaveManager:LoadAutoloadConfig()
 
--- 6. clean up after yourself ----------------------------------------------
+Library:Notify("Loaded. Press Right Shift to toggle.", 5)
 
-Library:OnUnload(function()
-	-- stop loops, remove ESP drawings, restore walkspeed, ...
-	print("script unloaded")
-end)
+-- read values any time:
+--   Library.Toggles.AutoFarm.Value
+--   Library.Options.Speed.Value
+--   Library.Options.HighlightColor.Value
