@@ -1,18 +1,18 @@
 {
-  "name": "VantaUI",
+  "name": "OzionUI",
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
-      "VantaUI": {
-        "$path": "src/VantaUI.lua"
+      "OzionUI": {
+        "$path": "src/OzionUI.lua"
       }
     },
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "StarterPlayerScripts": {
         "$className": "StarterPlayerScripts",
-        "VantaShowcase": {
+        "OzionShowcase": {
           "$path": "examples/showcase.client.lua"
         }
       }

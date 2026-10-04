@@ -1,9 +1,9 @@
--- Put VantaUI in ReplicatedStorage, then place this LocalScript in StarterPlayerScripts.
+-- Put OzionUI in ReplicatedStorage, then place this LocalScript in StarterPlayerScripts.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local VantaUI = require(ReplicatedStorage:WaitForChild("VantaUI"))
+local OzionUI = require(ReplicatedStorage:WaitForChild("OzionUI"))
 
-local Window = VantaUI:CreateWindow({
-	Title = "Vanta",
+local Window = OzionUI:CreateWindow({
+	Title = "OzionUI",
 	Subtitle = "SHOWCASE · 1.0",
 	Size = Vector2.new(780, 520),
 	Theme = "Obsidian",
@@ -14,7 +14,7 @@ local Window = VantaUI:CreateWindow({
 local Home = Window:AddTab({
 	Title = "Dashboard",
 	Icon = "◆",
-	Description = "A quick tour of Vanta UI",
+	Description = "A quick tour of OzionUI",
 })
 
 local Welcome = Home:AddSection({
@@ -23,7 +23,7 @@ local Welcome = Home:AddSection({
 })
 
 Welcome:AddParagraph({
-	Title = "Vanta UI is ready",
+	Title = "OzionUI is ready",
 	Content = "Use the tabs, drag or resize the window, and press RightShift to hide it. Every control below is wired to a working callback.",
 })
 
@@ -33,7 +33,7 @@ Welcome:AddButton({
 	Callback = function()
 		Window:Notify({
 			Title = "Looking good",
-			Content = "Your Vanta UI window is working.",
+			Content = "Your OzionUI window is working.",
 			Type = "Success",
 			Duration = 3.5,
 		})
@@ -88,7 +88,7 @@ General:AddToggle({
 General:AddInput({
 	Title = "Display name",
 	Placeholder = "Type a name...",
-	Default = "Vanta user",
+	Default = "Ozion user",
 	Flag = "display_name",
 	Callback = function(value)
 		print("Name:", value)
@@ -167,7 +167,7 @@ Config:AddButton({
 })
 
 Window:Notify({
-	Title = "Vanta UI loaded",
+	Title = "OzionUI loaded",
 	Content = "Press RightShift at any time to toggle the window.",
 	Type = "Success",
 	Duration = 5,

@@ -1,8 +1,8 @@
-# Vanta UI
+# OzionUI
 
-A polished, animated, dependency-free UI library for Roblox. Vanta is an original dark interface inspired by modern dashboard design, with smooth transitions, themes, config serialization, and a compact component API.
+A polished, animated, dependency-free UI library for Roblox. OzionUI is an original dark interface inspired by modern dashboard design, with smooth transitions, themes, config serialization, and a compact component API.
 
-> Vanta uses normal Roblox APIs and is intended for experiences you own or are authorized to modify. It does not include exploit, injection, or cheat functionality.
+> OzionUI uses normal Roblox APIs and is intended for experiences you own or are authorized to modify. It does not include exploit, injection, or cheat functionality.
 
 ## Highlights
 
@@ -21,17 +21,19 @@ A polished, animated, dependency-free UI library for Roblox. Vanta is an origina
 
 ### Roblox Studio
 
-1. Create a `ModuleScript` named `VantaUI` in `ReplicatedStorage`.
-2. Copy [`src/VantaUI.lua`](src/VantaUI.lua) into that ModuleScript.
+1. Create a `ModuleScript` named `OzionUI` in `ReplicatedStorage`.
+2. Copy [`src/OzionUI.lua`](src/OzionUI.lua) into that ModuleScript.
 3. Create a `LocalScript` in `StarterPlayer > StarterPlayerScripts`.
 4. Require the module from that LocalScript:
 
 ```lua
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local VantaUI = require(ReplicatedStorage:WaitForChild("VantaUI"))
+local OzionUI = require(ReplicatedStorage:WaitForChild("OzionUI"))
 ```
 
 A complete example is available in [`examples/showcase.client.lua`](examples/showcase.client.lua).
+
+**New to UI libraries?** Follow the step-by-step [`Getting started with OzionUI`](docs/GETTING_STARTED.md) guide to create a window and add buttons, toggles, sliders, dropdowns, inputs, keybinds, color pickers, notifications, themes, and config handling.
 
 ### Rojo
 
@@ -44,9 +46,9 @@ rojo serve
 ## Quick start
 
 ```lua
-local VantaUI = require(game.ReplicatedStorage.VantaUI)
+local OzionUI = require(game.ReplicatedStorage.OzionUI)
 
-local Window = VantaUI:CreateWindow({
+local Window = OzionUI:CreateWindow({
     Title = "My Hub",
     Subtitle = "PRIVATE BUILD",
     Theme = "Obsidian",
@@ -98,13 +100,13 @@ Window:Notify({
 
 ### Library
 
-#### `VantaUI:CreateWindow(options)`
+#### `OzionUI:CreateWindow(options)`
 
 Creates and returns a window.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `Title` | string | `"Vanta"` | Brand title |
+| `Title` | string | `"OzionUI"` | Brand title |
 | `Subtitle` | string | `"UI LIBRARY"` | Small brand caption |
 | `Size` | Vector2 | `Vector2.new(760, 500)` | Initial window size |
 | `MinSize` | Vector2 | `Vector2.new(620, 400)` | Resize floor |
@@ -113,12 +115,12 @@ Creates and returns a window.
 | `Resizable` | boolean | `true` | Enables resize handle |
 | `Parent` | Instance | `LocalPlayer.PlayerGui` | Optional GUI parent |
 
-#### `VantaUI:RegisterTheme(name, colors)`
+#### `OzionUI:RegisterTheme(name, colors)`
 
 Adds a reusable theme. Missing tokens inherit from `Obsidian`.
 
 ```lua
-VantaUI:RegisterTheme("Emerald", {
+OzionUI:RegisterTheme("Emerald", {
     Accent = Color3.fromRGB(45, 220, 145),
     AccentAlt = Color3.fromRGB(64, 180, 255),
 })
@@ -278,7 +280,7 @@ Section:AddParagraph({
 
 ## Config notes
 
-Vanta only serializes the current values. Storage is intentionally left to your game so you can use the appropriate Roblox system, such as a server-validated DataStore flow. `Color3` values become hex strings and keybinds become key names in exported JSON.
+OzionUI only serializes the current values. Storage is intentionally left to your game so you can use the appropriate Roblox system, such as a server-validated DataStore flow. `Color3` values become hex strings and keybinds become key names in exported JSON.
 
 ```lua
 local json = Window:ExportConfig()

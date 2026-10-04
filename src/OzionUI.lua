@@ -1,4 +1,4 @@
--- Vanta UI
+-- OzionUI
 -- A polished, dependency-free Roblox UI library.
 -- Designed for LocalScripts and standard Roblox Studio projects.
 
@@ -7,13 +7,13 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 
-local VantaUI = {
+local OzionUI = {
 	Version = "1.0.0",
 	Themes = {},
 	Windows = {},
 }
 
-VantaUI.Themes.Obsidian = {
+OzionUI.Themes.Obsidian = {
 	Background = Color3.fromRGB(12, 13, 18),
 	Surface = Color3.fromRGB(18, 19, 27),
 	SurfaceAlt = Color3.fromRGB(24, 25, 35),
@@ -28,7 +28,7 @@ VantaUI.Themes.Obsidian = {
 	Danger = Color3.fromRGB(255, 91, 118),
 }
 
-VantaUI.Themes.Midnight = {
+OzionUI.Themes.Midnight = {
 	Background = Color3.fromRGB(7, 14, 24),
 	Surface = Color3.fromRGB(12, 23, 38),
 	SurfaceAlt = Color3.fromRGB(17, 31, 49),
@@ -43,7 +43,7 @@ VantaUI.Themes.Midnight = {
 	Danger = Color3.fromRGB(255, 90, 108),
 }
 
-VantaUI.Themes.Rose = {
+OzionUI.Themes.Rose = {
 	Background = Color3.fromRGB(19, 12, 18),
 	Surface = Color3.fromRGB(29, 17, 27),
 	SurfaceAlt = Color3.fromRGB(39, 23, 36),
@@ -118,7 +118,7 @@ local function safeCall(callback, ...)
 	end
 	local ok, message = pcall(callback, ...)
 	if not ok then
-		warn("[Vanta UI] Callback error: " .. tostring(message))
+		warn("[OzionUI] Callback error: " .. tostring(message))
 	end
 end
 
@@ -223,7 +223,7 @@ Tab.__index = Tab
 local Section = {}
 Section.__index = Section
 
-function VantaUI:RegisterTheme(name, colors)
+function OzionUI:RegisterTheme(name, colors)
 	assert(type(name) == "string", "Theme name must be a string")
 	assert(type(colors) == "table", "Theme colors must be a table")
 	self.Themes[name] = merge(self.Themes.Obsidian, colors)
@@ -272,10 +272,10 @@ end
 function Window:SetTheme(theme)
 	local colors = theme
 	if type(theme) == "string" then
-		colors = VantaUI.Themes[theme]
+		colors = OzionUI.Themes[theme]
 	end
-	assert(type(colors) == "table", "Unknown Vanta UI theme")
-	self.Theme = merge(VantaUI.Themes.Obsidian, colors)
+	assert(type(colors) == "table", "Unknown OzionUI theme")
+	self.Theme = merge(OzionUI.Themes.Obsidian, colors)
 	for index = #self._themeBindings, 1, -1 do
 		local binding = self._themeBindings[index]
 		if binding.Instance and binding.Instance.Parent then
@@ -330,7 +330,7 @@ function Window:ImportConfig(config)
 	if type(config) == "string" then
 		local ok, decoded = pcall(HttpService.JSONDecode, HttpService, config)
 		if not ok then
-			warn("[Vanta UI] Could not decode config")
+			warn("[OzionUI] Could not decode config")
 			return self
 		end
 		data = decoded
@@ -1627,17 +1627,17 @@ function Window:Destroy()
 	if self.Screen then
 		self.Screen:Destroy()
 	end
-	for index, window in ipairs(VantaUI.Windows) do
+	for index, window in ipairs(OzionUI.Windows) do
 		if window == self then
-			table.remove(VantaUI.Windows, index)
+			table.remove(OzionUI.Windows, index)
 			break
 		end
 	end
 end
 
-function VantaUI:CreateWindow(options)
+function OzionUI:CreateWindow(options)
 	options = merge({
-		Title = "Vanta",
+		Title = "OzionUI",
 		Subtitle = "UI LIBRARY",
 		Size = Vector2.new(760, 500),
 		MinSize = Vector2.new(620, 400),
@@ -1657,7 +1657,7 @@ function VantaUI:CreateWindow(options)
 	local parent = options.Parent
 	if not parent then
 		local player = Players.LocalPlayer
-		assert(player, "Vanta UI must be created from a LocalScript, or receive a Parent")
+		assert(player, "OzionUI must be created from a LocalScript, or receive a Parent")
 		parent = player:WaitForChild("PlayerGui")
 	end
 	local theme = type(options.Theme) == "table" and merge(self.Themes.Obsidian, options.Theme)
@@ -1678,7 +1678,7 @@ function VantaUI:CreateWindow(options)
 	}, Window)
 
 	local screen = create("ScreenGui", {
-		Name = "VantaUI_" .. HttpService:GenerateGUID(false):sub(1, 8),
+		Name = "OzionUI_" .. HttpService:GenerateGUID(false):sub(1, 8),
 		IgnoreGuiInset = true,
 		ResetOnSpawn = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -2095,12 +2095,12 @@ function VantaUI:CreateWindow(options)
 	return window
 end
 
-function VantaUI:Notify(options)
+function OzionUI:Notify(options)
 	local window = self.Windows[#self.Windows]
 	if window then
 		return window:Notify(options)
 	end
-	warn("[Vanta UI] Create a window before sending a notification")
+	warn("[OzionUI] Create a window before sending a notification")
 end
 
-return VantaUI
+return OzionUI
