@@ -1,0 +1,21 @@
+{
+  "name": "OzionUI",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "OzionUI": {
+        "$path": "src/OzionUI.lua"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "OzionShowcase": {
+          "$path": "examples/showcase.client.lua"
+        }
+      }
+    }
+  }
+}
