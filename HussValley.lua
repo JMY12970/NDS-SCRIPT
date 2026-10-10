@@ -2,6 +2,9 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local IS_MOBILE = UserInputService.TouchEnabled
+local UTILITY_INTERVAL = IS_MOBILE and 0.5 or 0.25
 
 -- Shared state for the loader (kept in one table to stay under Luau's 200-local limit)
 local Hub = {
@@ -10,8 +13,9 @@ local Hub = {
     cleaned = false,
 }
 -- Re-executing the script cleanly unloads the previous copy first
-if Hub.genv.HussValleyUnload then
-    pcall(Hub.genv.HussValleyUnload)
+local previousUnload = Hub.genv.OziohubUnload or Hub.genv.HussValleyUnload
+if previousUnload then
+    pcall(previousUnload)
 end
 
 local LocalPlayer = Players.LocalPlayer
@@ -3304,7 +3308,7 @@ local function getDebugGui()
     label.Font = Enum.Font.Code
     label.TextSize = 12
     label.TextWrapped = false
-    label.Text = "Huss Valley | FULL DEBUG"
+    label.Text = "Oziohub | FULL DEBUG"
     label.Parent = frame
 
     runtime.debugGui = gui
@@ -3346,7 +3350,7 @@ local function updateDebugPanel(now)
     local path = runtime.path or Vector3.zero
 
     label.Text = table.concat({
-        "Huss Valley | FULL DEBUG",
+        "Oziohub | FULL DEBUG",
         string.format("Role=%s | RunState=%s | InMatch=%s | ClientReady=%s", tostring(getRole()), tostring(getRunState()), tostring(LocalPlayer:GetAttribute("InMatch")), tostring(LocalPlayer:GetAttribute("ClientReady"))),
         string.format("MovementLocked=%s | Ragdolled=%s | GearMotion=%s | HP=%.1f | WalkSpeed=%.1f", tostring(character and character:GetAttribute("MovementLocked")), tostring(character and character:GetAttribute("Ragdolled")), tostring(character and character:GetAttribute("GearMotion")), health, speed),
         string.format("Position=%.1f, %.1f, %.1f | GoalMode=%s | GoalDistance=%.1f", position.X, position.Y, position.Z, tostring(runtime.goalMode), goalDistance),
@@ -3978,18 +3982,22 @@ end)
 
 WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
+local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(520, 860)
+local windowWidth = math.max(280, math.min(520, viewport.X - 24))
+local windowHeight = math.max(360, math.min(860, viewport.Y - 48))
+
 local Window = WindUI:CreateWindow({
-    Title = "Huss Valley",
+    Title = "Oziohub",
     Icon = "bird",
-    Author = "https://rscripts.net/@_LSS",
+    Author = "Oziohub",
     Folder = "HussValley",
-    Size = UDim2.fromOffset(520, 860),
+    Size = UDim2.fromOffset(windowWidth, windowHeight),
     Transparent = true,
     Theme = "Dark",
     ToggleKey = Enum.KeyCode.RightShift,
 })
 
-Window:Tag({Title = "Huss Valley", Color = Color3.fromRGB(110, 190, 255)})
+Window:Tag({Title = "Oziohub", Color = Color3.fromRGB(70, 205, 180)})
 
 -- Notification gate (controlled from Settings tab)
 SETTINGS.notifications = true
@@ -5247,7 +5255,7 @@ do
     SettingsTab:Section({Title = "About"})
 
     SettingsTab:Paragraph({
-        Title = "Huss Valley",
+        Title = "Oziohub",
         Desc = "Chicken or Hero helper.\nToggle the window with the key selected above (default: RightShift).",
     })
 
@@ -5299,7 +5307,7 @@ do
 end
 
 WindUI:Notify({
-    Title = "Huss Valley",
+    Title = "Oziohub",
     Content = "Loaded. Auto Run is enabled by default.",
     Duration = 4,
     Icon = "wind",
@@ -5336,20 +5344,27 @@ end)
 
 local RENDER_NAME = "CoH_StableController"
 RunService:UnbindFromRenderStep(RENDER_NAME)
+local controllerInterval = IS_MOBILE and (1 / 30) or 0
+local lastControllerTick = os.clock()
 
 RunService:BindToRenderStep(RENDER_NAME, Enum.RenderPriority.Input.Value, function(dt)
     local now = os.clock()
-    local ok, err = pcall(runnerStep, now, dt)
-    if not ok then
-        setDebugError("Runner: " .. tostring(err))
+    local ok, err
+    if now - lastControllerTick >= controllerInterval then
+        local controllerDt = math.max(dt, now - lastControllerTick)
+        lastControllerTick = now
+        ok, err = pcall(runnerStep, now, controllerDt)
+        if not ok then
+            setDebugError("Runner: " .. tostring(err))
+        end
+
+        ok, err = pcall(catcherStep, now, controllerDt)
+        if not ok then
+            setDebugError("Catcher: " .. tostring(err))
+        end
     end
 
-    ok, err = pcall(catcherStep, now, dt)
-    if not ok then
-        setDebugError("Catcher: " .. tostring(err))
-    end
-
-    if now - runtime.utilityTick >= 0.25 then
+    if now - runtime.utilityTick >= UTILITY_INTERVAL then
         runtime.utilityTick = now
         ok, err = pcall(utilityStep, now)
         if not ok then
@@ -5427,6 +5442,9 @@ Hub.cleanup = function()
         end
     end)
 
+    if Hub.genv.OziohubUnload == Hub.cleanup then
+        Hub.genv.OziohubUnload = nil
+    end
     if Hub.genv.HussValleyUnload == Hub.cleanup then
         Hub.genv.HussValleyUnload = nil
     end
@@ -5434,6 +5452,7 @@ Hub.cleanup = function()
     pcall(function() Window:Destroy() end)
 end
 
+Hub.genv.OziohubUnload = Hub.cleanup
 Hub.genv.HussValleyUnload = Hub.cleanup
 pcall(function()
     Window:OnDestroy(function()
